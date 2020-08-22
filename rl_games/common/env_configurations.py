@@ -2,10 +2,376 @@ from rl_games.common import wrappers
 from rl_games.common import tr_helpers
 
 import gym
+from gym.wrappers import FlattenObservation, FilterObservation
+
 import numpy as np
+from numpy.random import default_rng
+
+import enum
+
+'''import rrc_simulation
+from rrc_simulation.gym_wrapper.envs import cube_env
+from rrc_simulation.tasks import move_cube
+from rrc_simulation import visual_objects
+from rrc_simulation import TriFingerPlatform
+
+
+class FlatObservationWrapper(gym.ObservationWrapper):
+    def __init__(self, env):
+        super().__init__(env)
+        low = [
+            self.observation_space[name].low.flatten()
+            for name in self.observation_names
+        ]
+
+        high = [
+            self.observation_space[name].high.flatten()
+            for name in self.observation_names
+        ]
+
+        self.observation_space = gym.spaces.Box(
+            low=np.concatenate(low), high=np.concatenate(high)
+        )
+
+    def observation(self, obs):
+        observation = [obs[name].flatten() for name in self.observation_names]
+
+        observation = np.concatenate(observation)
+        return observation
+
+
+class SimplePushingTrainingEnv(gym.Env):
+    """Gym environment for moving cubes with simulated TriFingerPro."""
+
+    def __init__(
+        self,
+        initializer=None,
+        action_type=cube_env.ActionType.POSITION,
+        reward_type=0,
+        frameskip=1,
+        visualization=False,
+        episode_length = 3750,
+    ):
+        """Initialize.
+
+        Args:
+            initializer: Initializer class for providing initial cube pose and
+                goal pose. If no initializer is provided, we will initialize in a way 
+                which is be helpful for learning.
+            action_type (ActionType): Specify which type of actions to use.
+                See :class:`ActionType` for details.
+            frameskip (int):  Number of actual control steps to be performed in
+                one call of step().
+            visualization (bool): If true, the pyBullet GUI is run for
+                visualization.
+        """
+        # Basic initialization
+        # ====================
+        
+        self.initializer = initializer
+        self.action_type = action_type
+        self.visualization = visualization
+        self.reward_type = reward_type
+        self.goal_dist = 1.0
+        self.success_dist = 0.005
+        self.success_bonus = 250.0
+        self.eps = 0.01
+
+        self.rng = default_rng()
+
+        if frameskip < 1:
+            raise ValueError("frameskip cannot be less than 1.")
+        self.frameskip = frameskip
+
+        self.episode_length = episode_length
+        move_cube.episode_length = episode_length
+
+        # will be initialized in reset()
+        self.platform = None
+
+        # Create the action and observation spaces
+        # ========================================
+
+        spaces = TriFingerPlatform.spaces
+
+        if self.action_type == cube_env.ActionType.TORQUE:
+            self.action_space = spaces.robot_torque.gym
+        elif self.action_type == cube_env.ActionType.POSITION:
+            self.action_space = spaces.robot_position.gym
+        elif self.action_type == cube_env.ActionType.TORQUE_AND_POSITION:
+            self.action_space = gym.spaces.Dict(
+                {
+                    "torque": spaces.robot_torque.gym,
+                    "position": spaces.robot_position.gym,
+                }
+            )
+        else:
+            raise ValueError("Invalid action_type")
+
+        self.observation_names = [
+            "robot_position",
+            "robot_velocity",
+            "robot_tip_positions",
+            "object_position",
+            "object_orientation",
+            "goal_object_position",
+        ]
+
+        self.observation_space = gym.spaces.Dict(
+            {
+                "robot_position": spaces.robot_position.gym,
+                "robot_velocity": spaces.robot_velocity.gym,
+                "robot_tip_positions": gym.spaces.Box(
+                    low=np.array([spaces.object_position.low] * 3),
+                    high=np.array([spaces.object_position.high] * 3),
+                ),
+                "object_position": spaces.object_position.gym,
+                "object_orientation": spaces.object_orientation.gym,
+                "goal_object_position": spaces.object_position.gym,
+            }
+        )
+
+    def step(self, action):
+        if self.platform is None:
+            raise RuntimeError("Call `reset()` before starting to step.")
+
+        if not self.action_space.contains(action):
+            raise ValueError(
+                "Given action is not contained in the action space."
+            )
+
+        num_steps = self.frameskip
+
+        # ensure episode length is not exceeded due to frameskip
+        step_count_after = self.step_count + num_steps
+        if step_count_after > move_cube.episode_length:
+            excess = step_count_after - move_cube.episode_length
+            num_steps = max(1, num_steps - excess)
+
+        reward = 0.0
+        for _ in range(num_steps):
+            self.step_count += 1
+            if self.step_count > move_cube.episode_length:
+                raise RuntimeError("Exceeded number of steps for one episode.")
+
+            # send action to robot
+            robot_action = self._gym_action_to_robot_action(action)
+            t = self.platform.append_desired_action(robot_action)
+
+            previous_observation = self._create_observation(t)
+            observation = self._create_observation(t + 1)
+
+            if self.reward_type == 0:
+                reward += self._compute_reward0(
+                    previous_observation=previous_observation,
+                    observation=observation,
+                    success_dist=self.success_dist,
+                    success_bonus=self.success_bonus,
+                    eps=self.eps
+                )
+            elif self.reward_type == 1:
+                reward += self._compute_reward1(
+                    previous_observation=previous_observation,
+                    observation=observation,
+                    success_dist=self.success_dist,
+                    success_bonus=self.success_bonus,
+                    eps=self.eps
+                )
+            else:
+                reward += self._compute_reward0(
+                    previous_observation=previous_observation,
+                    observation=observation,
+                    success_dist=self.success_dist,
+                    success_bonus=self.success_bonus,
+                    eps=self.eps
+                )
+
+        self.goal_dist = np.linalg.norm(observation["goal_object_position"]
+                        - observation["object_position"])
+
+        # todo add new conditions
+        is_done = (self.step_count >= move_cube.episode_length)
+        #is_done = (self.step_count == move_cube.episode_length) or (self.goal_dist <= self.success_dist)
+
+        return observation, reward, is_done, self.info
+
+    def reset(self):
+        # reset simulation
+        del self.platform
+
+        default_robot_position = TriFingerPlatform.spaces.robot_position.default
+        #print("Robot default pos: ", default_robot_position)
+        #print("Robot spaces: ", TriFingerPlatform.spaces)
+
+        self.goal_dist = 1.0
+
+        # initialize simulation
+        if self.initializer is None:
+            # if no initializer is given (which will be the case during training),
+            # we can initialize in any way desired. here, we initialize the cube always
+            # in the center of the arena, instead of randomly, as this appears to help 
+            # training
+
+            default_object_position = (
+                TriFingerPlatform.spaces.object_position.default
+            )
+            default_object_orientation = (
+                TriFingerPlatform.spaces.object_orientation.default
+            )
+            init_object_position = self.rng.uniform(default_object_position - 0.01, default_object_position + 0.01)
+            initial_object_pose = move_cube.Pose(
+                position=init_object_position,
+                orientation=default_object_orientation,
+            )
+            
+            goal_object_pose = move_cube.sample_goal(difficulty=1)   
+        else:
+            # if an initializer is given, i.e. during evaluation, we need to initialize
+            # according to it, to make sure we remain coherent with the standard CubeEnv.
+            # otherwise the trajectories produced during evaluation will be invalid.
+            initial_object_pose = self.initializer.get_initial_state()
+            goal_object_pose = self.initializer.get_goal()
+        
+        # todo in a more controlled way
+        initial_robot_position = self.rng.uniform(default_robot_position - 0.1, default_robot_position + 0.1)
+        #print("Robot reset pos: ", initial_robot_position)
+            
+        self.platform = TriFingerPlatform(
+            visualization=self.visualization,
+            initial_robot_position=initial_robot_position,
+            initial_object_pose=initial_object_pose,
+        )
+
+        self.goal = {
+            "position": goal_object_pose.position,
+            "orientation": goal_object_pose.orientation,
+        }
+
+        # visualize the goal
+        if self.visualization:
+            self.goal_marker = visual_objects.CubeMarker(
+                width=0.065,
+                position=goal_object_pose.position,
+                orientation=goal_object_pose.orientation,
+            )
+
+        self.info = dict()
+        self.step_count = 0
+
+        return self._create_observation(0)
+
+    def seed(self, seed=None):
+        self.np_random, seed = gym.utils.seeding.np_random(seed)
+        move_cube.random = self.np_random
+        return [seed]
+
+    def _create_observation(self, t):
+        robot_observation = self.platform.get_robot_observation(t)
+        object_observation = self.platform.get_object_pose(t)
+        robot_tip_positions = self.platform.forward_kinematics(
+            robot_observation.position
+        )
+        robot_tip_positions = np.array(robot_tip_positions)
+
+        observation = {
+            "robot_position": robot_observation.position,
+            "robot_velocity": robot_observation.velocity,
+            "robot_tip_positions": robot_tip_positions,
+            "object_position": object_observation.position,
+            "object_orientation": object_observation.orientation,
+            "goal_object_position": self.goal["position"],
+        }
+        return observation
+
+    @staticmethod
+    def _compute_reward0(previous_observation, observation, success_dist=0.005, success_bonus=250, eps=0.015):
+
+        # calculate first reward term
+        current_distance_from_block = np.linalg.norm(
+            observation["robot_tip_positions"] - observation["object_position"]
+        )
+        previous_distance_from_block = np.linalg.norm(
+            previous_observation["robot_tip_positions"]
+            - previous_observation["object_position"]
+        )
+
+        reward_term_1 = (
+            previous_distance_from_block - current_distance_from_block
+        )
+
+        # calculate second reward term
+        current_dist_to_goal = np.linalg.norm(
+            observation["goal_object_position"]
+            - observation["object_position"]
+        )
+        previous_dist_to_goal = np.linalg.norm(
+            previous_observation["goal_object_position"]
+            - previous_observation["object_position"]
+        )
+        reward_term_2 = previous_dist_to_goal - current_dist_to_goal
+
+        reward = -4.5 * current_dist_to_goal - 0.5 * current_distance_from_block
+        if current_dist_to_goal < 0.005:
+            reward += 1.0
+            print("Success! Dist to goal = ", current_dist_to_goal)
+
+    #    if current_dist_to_goal <= success_dist:
+    #        reward += success_bonus
+
+        return reward
+
+    @staticmethod
+    def _compute_reward1(previous_observation, observation, success_dist=0.005, success_bonus=250, eps=0.015):
+
+        # calculate first reward term
+        current_distance_from_block = np.linalg.norm(
+            observation["robot_tip_positions"] - observation["object_position"]
+        )
+        previous_distance_from_block = np.linalg.norm(
+            previous_observation["robot_tip_positions"]
+            - previous_observation["object_position"]
+        )
+
+        reward_term_1 = (
+            previous_distance_from_block - current_distance_from_block
+        )
+
+        # calculate second reward term
+        current_dist_to_goal = np.linalg.norm(
+            observation["goal_object_position"]
+            - observation["object_position"]
+        )
+        previous_dist_to_goal = np.linalg.norm(
+            previous_observation["goal_object_position"]
+            - previous_observation["object_position"]
+        )
+        reward_term_2 = previous_dist_to_goal - current_dist_to_goal
+
+        reward = 0.1 / (current_dist_to_goal + eps) - 2.0 * current_distance_from_block
+
+    #    if current_dist_to_goal <= success_dist:
+    #        reward += success_bonus
+
+        return reward
+
+    def _gym_action_to_robot_action(self, gym_action):
+        # construct robot action depending on action type
+        if self.action_type == cube_env.ActionType.TORQUE:
+            robot_action = self.platform.Action(torque=gym_action)
+        elif self.action_type == cube_env.ActionType.POSITION:
+            robot_action = self.platform.Action(position=gym_action)
+        elif self.action_type == cube_env.ActionType.TORQUE_AND_POSITION:
+            robot_action = self.platform.Action(
+                torque=gym_action["torque"], position=gym_action["position"]
+            )
+        else:
+            raise ValueError("Invalid action_type")
+
+        return robot_action'''
 
 #FLEX_PATH = '/home/viktor/Documents/rl/FlexRobotics'
 FLEX_PATH = '/home/trrrrr/Documents/FlexRobotics-master'
+
 
 class HCRewardEnv(gym.RewardWrapper):
     def __init__(self, env):
@@ -43,6 +409,8 @@ class HCRewardEnv(gym.RewardWrapper):
             self.stops_decay = 0
         '''
         return np.max([-10, reward])
+
+
 class HCObsEnv(gym.ObservationWrapper):
     def __init__(self, env):
         gym.RewardWrapper.__init__(self, env)
@@ -111,6 +479,40 @@ def create_default_gym_env(**kwargs):
             env = wrappers.FrameStack(env, frames, False)
     if limit_steps:
         env = wrappers.LimitStepsWrapper(env)
+    return env 
+
+def create_goal_gym_env(**kwargs):
+    frames = kwargs.pop('frames', 1)
+    name = kwargs.pop('name')
+    limit_steps = kwargs.pop('limit_steps', False)
+
+    env = gym.make(name, **kwargs)
+    env = FlattenObservation(FilterObservation(env, ['observation', 'desired_goal']))
+
+    if frames > 1:
+        env = wrappers.FrameStack(env, frames, False)
+    if limit_steps:
+        env = wrappers.LimitStepsWrapper(env)
+    return env 
+
+def create_rrc_gym_env(**kwargs):
+    print("Creating rrc env")
+
+    frames = kwargs.pop('frames', 1)
+    name = kwargs.pop('name')
+#    limit_steps = kwargs.pop('limit_steps', False)
+
+    initializer = cube_env.RandomInitializer(difficulty=1)
+    env = SimplePushingTrainingEnv(initializer=initializer, reward_type=0, frameskip=1, visualization=True, episode_length=3750)
+    env.seed(7)
+    env.action_space.seed(7)
+    env = FlatObservationWrapper(env)
+    print(env.action_space)
+
+    if frames > 1:
+        env = wrappers.FrameStack(env, frames, False)
+#    if limit_steps:
+#        env = wrappers.LimitStepsWrapper(env)
     return env 
 
 def create_atari_gym_env(**kwargs):
@@ -330,6 +732,14 @@ configurations = {
     },
     'openai_gym' : {
         'env_creator' : lambda **kwargs : create_default_gym_env(**kwargs),
+        'vecenv_type' : 'RAY'
+    },
+    'openai_robot_gym' : {
+        'env_creator' : lambda **kwargs : create_goal_gym_env(**kwargs),
+        'vecenv_type' : 'RAY'
+    },
+    'rrc_gym' : {
+        'env_creator' : lambda **kwargs : create_rrc_gym_env(**kwargs),
         'vecenv_type' : 'RAY'
     },
     'atari_gym' : {

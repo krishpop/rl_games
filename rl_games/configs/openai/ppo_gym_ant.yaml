@@ -40,10 +40,10 @@ params:
       gamma: 0.99
       tau: 0.9
       learning_rate: 3e-4
-      name: Hand_block
+      name: Ant
       score_to_win: 100080
       grad_norm: 1.0
-      entropy_coef: 0.000
+      entropy_coef: 0.0
       truncate_grads: True
       env_name:  openai_gym
       ppo: true
@@ -52,7 +52,7 @@ params:
       num_actors: 16
       steps_num: 128
       minibatch_size: 1024
-      mini_epochs: 8
+      mini_epochs: 12
       critic_coef: 2
       lr_schedule:  adaptive
       lr_threshold: 0.008

@@ -10,6 +10,7 @@ from copy import copy
 
 cv2.ocl.setUseOpenCL(False)
 
+
 class LimitStepsWrapper(gym.Wrapper):
     def __init__(self, env, limit=200):
         gym.RewardWrapper.__init__(self, env)
@@ -56,6 +57,7 @@ class NoopResetEnv(gym.Wrapper):
     def step(self, ac):
         return self.env.step(ac)
 
+
 class FireResetEnv(gym.Wrapper):
     def __init__(self, env):
         """Take action on reset for environments that are fixed until firing."""
@@ -75,6 +77,7 @@ class FireResetEnv(gym.Wrapper):
 
     def step(self, ac):
         return self.env.step(ac)
+
 
 class EpisodicLifeEnv(gym.Wrapper):
     def __init__(self, env):
@@ -112,6 +115,7 @@ class EpisodicLifeEnv(gym.Wrapper):
         self.lives = self.env.unwrapped.ale.lives()
         return obs
 
+
 class EpisodeStackedEnv(gym.Wrapper):
     def __init__(self, env):
 
@@ -144,8 +148,7 @@ class MaxAndSkipEnv(gym.Wrapper):
             self._obs_buffer = np.zeros((2,)+env.observation_space.shape, dtype=np.uint8)
         else:
             self._obs_buffer = np.zeros((2,)+env.observation_space.shape, dtype=np.float32)
-        self._skip       = skip
-        
+        self._skip = skip  
 
     def step(self, action):
         """Repeat action, sum reward, and max over last observations."""
@@ -174,6 +177,7 @@ class MaxAndSkipEnv(gym.Wrapper):
     def reset(self, **kwargs):
         return self.env.reset(**kwargs)
 
+
 class ClipRewardEnv(gym.RewardWrapper):
     def __init__(self, env):
         gym.RewardWrapper.__init__(self, env)
@@ -181,6 +185,7 @@ class ClipRewardEnv(gym.RewardWrapper):
     def reward(self, reward):
         """Bin reward to {+1, 0, -1} by its sign."""
         return np.sign(reward)
+
 
 class WarpFrame(gym.ObservationWrapper):
     def __init__(self, env, width=84, height=84, grayscale=True):
@@ -203,6 +208,7 @@ class WarpFrame(gym.ObservationWrapper):
         if self.grayscale:
             frame = np.expand_dims(frame, -1)
         return frame
+
 
 class FrameStack(gym.Wrapper):
     def __init__(self, env, k, flat = False):
@@ -230,7 +236,6 @@ class FrameStack(gym.Wrapper):
             else:
                 self.observation_space = spaces.Box(low=0, high=255, shape=(shp[:-1] + (shp[-1] * k,)), dtype=observation_space.dtype)
 
-
     def reset(self):
         ob = self.env.reset()
         for _ in range(self.k):
@@ -255,6 +260,7 @@ class FrameStack(gym.Wrapper):
             else:
                 return np.concatenate(self.frames, axis=-1)
         #return LazyFrames(list(self.frames))
+
 
 class BatchedFrameStack(gym.Wrapper):
     def __init__(self, env, k, transpose = False, flatten = False):
@@ -362,6 +368,7 @@ class ScaledFloatFrame(gym.ObservationWrapper):
         # with smaller replay buffers only.
         return np.array(observation).astype(np.float32) / 255.0
 
+
 class LazyFrames(object):
     def __init__(self, frames):
         """This object ensures that common frames between the observations are only stored once.
@@ -390,6 +397,7 @@ class LazyFrames(object):
     def __getitem__(self, i):
         return self._force()[i]
 
+
 class ReallyDoneWrapper(gym.Wrapper):
     def __init__(self, env):
         """
@@ -411,6 +419,7 @@ class ReallyDoneWrapper(gym.Wrapper):
             obs, _, done, _ = self.env.step(1)
         done = lives == 0
         return obs, reward, done, info
+
 
 class AllowBacktracking(gym.Wrapper):
     """
@@ -447,6 +456,7 @@ def unwrap(env):
     else:
         return env
 
+
 class StickyActionEnv(gym.Wrapper):
     def __init__(self, env, p=0.25):
         super(StickyActionEnv, self).__init__(env)
@@ -463,6 +473,7 @@ class StickyActionEnv(gym.Wrapper):
         self.last_action = action
         obs, reward, done, info = self.env.step(action)
         return obs, reward, done, info
+
 
 class MontezumaInfoWrapper(gym.Wrapper):
     def __init__(self, env, room_address):
@@ -487,6 +498,7 @@ class MontezumaInfoWrapper(gym.Wrapper):
 
     def reset(self):
         return self.env.reset()
+
 
 class MaskVelocityWrapper(gym.ObservationWrapper):
     """
@@ -541,8 +553,6 @@ def wrap_deepmind(env, episode_life=True, clip_rewards=True, frame_stack=True, s
     if frame_stack:
         env = FrameStack(env, 4)
     return env
-
-
 
 def wrap_carracing(env, clip_rewards=True, frame_stack=True, scale=False):
     """Configure environment for DeepMind-style Atari.
