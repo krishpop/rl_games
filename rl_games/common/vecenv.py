@@ -78,7 +78,10 @@ class RayWorker:
         return self.env.get_action_mask()
 
     def get_number_of_agents(self):
-        return self.env.get_number_of_agents()
+        if hasattr(self.env, 'get_number_of_agents'):
+            return self.env.get_number_of_agents()
+        else:
+            return 1
 
     def set_weights(self, weights):
         self.env.update_weights(weights)
@@ -112,7 +115,8 @@ class RayVecEnv(IVecEnv):
         
         self.remote_worker = ray.remote(RayWorker)
         self.workers = [self.remote_worker.remote(self.config_name, kwargs) for i in range(self.num_actors)]
-
+        res = self.workers[0].get_number_of_agents.remote()
+        self.num_agents = ray.get(res)
     def step(self, actions):
         newobs, newrewards, newdones, newinfos = [], [], [], []
         res_obs = []
@@ -143,13 +147,16 @@ class RayVecEnv(IVecEnv):
     def get_action_masks(self):
         mask = [worker.get_action_mask.remote() for worker in self.workers]
         return np.asarray(ray.get(mask), dtype=np.int32)
+    
+    def get_number_of_agents(self):
+        return self.num_agents
 
     def reset(self):
         obs = [worker.reset.remote() for worker in self.workers]
         return np.asarray(ray.get(obs))
 
 # todo rename multi-agent
-class RayVecSMACEnv(IVecEnv):
+class ReyVecEnvMultiAgent(IVecEnv):
     def __init__(self, config_name, num_actors, **kwargs):
         self.config_name = config_name
         self.num_actors = num_actors
@@ -240,5 +247,6 @@ def create_vec_env(config_name, num_actors, **kwargs):
     return vecenv_config[vec_env_name](config_name, num_actors, **kwargs)
 
 register('RAY', lambda config_name, num_actors, **kwargs: RayVecEnv(config_name, num_actors, **kwargs))
-register('RAY_SMAC', lambda config_name, num_actors, **kwargs: RayVecSMACEnv(config_name, num_actors, **kwargs))
+register('RAY_SMAC', lambda config_name, num_actors, **kwargs: ReyVecEnvMultiAgent(config_name, num_actors, **kwargs))
+register('RAY_MA', lambda config_name, num_actors, **kwargs: ReyVecEnvMultiAgent(config_name, num_actors, **kwargs))
 register('ISAAC', lambda config_name, num_actors, **kwargs: IsaacEnv(config_name, num_actors, **kwargs))

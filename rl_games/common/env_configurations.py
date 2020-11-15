@@ -127,6 +127,12 @@ def create_connect_four_env(**kwargs):
         env = gym.make(name, **kwargs)
     return env
 
+def create_multiwalker_env(**kwargs):
+    from rl_games.envs.multiwalker import MultiWalker
+    env = MultiWalker('', **kwargs) 
+
+    return env
+
 def create_atari_gym_env(**kwargs):
     #frames = kwargs.pop('frames', 1)
     name = kwargs.pop('name')
@@ -411,6 +417,10 @@ configurations = {
     'connect4_env' : {
         'env_creator' : lambda **kwargs : create_connect_four_env(**kwargs),
         'vecenv_type' : 'RAY'
+    },
+    'multiwalker_env' : {
+        'env_creator' : lambda **kwargs : create_multiwalker_env(**kwargs),
+        'vecenv_type' : 'RAY_SMAC'
     },
 }
 
