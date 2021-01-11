@@ -119,6 +119,7 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
             c_loss = c_loss.sum(dim=1)
 
         b_loss = self.bound_loss(mu)
+
         losses, sum_mask = torch_ext.apply_masks([a_loss, c_loss, entropy, b_loss], rnn_masks)
         a_loss, c_loss, entropy, b_loss = losses[0], losses[1], losses[2], losses[3]
 
@@ -148,13 +149,13 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
         return self.train_result
 
     def bound_loss(self, mu):
-        if self.bounds_loss_coef is not None:
+        if self.bounds_loss_coef > 0:
             soft_bound = 1.1
             mu_loss_high = torch.clamp_max(mu - soft_bound, 0.0)**2
             mu_loss_low = torch.clamp_max(-mu + soft_bound, 0.0)**2
             b_loss = (mu_loss_low + mu_loss_high).sum(axis=-1)
         else:
-            b_loss = 0
+            b_loss = torch.zeros(1, device=self.ppo_device)
         return b_loss
 
 

@@ -920,7 +920,7 @@ class ContinuousA2CBase(A2CBase):
         self.is_discrete = False
         action_space = self.env_info['action_space']
         self.actions_num = action_space.shape[0]
-        self.bounds_loss_coef = config.get('bounds_loss_coef', None)
+        self.bounds_loss_coef = config.get('bounds_loss_coef', 0.0)
 
         # todo introduce device instead of cuda()
         self.actions_low = torch.from_numpy(action_space.low.copy()).float().to(self.ppo_device)
