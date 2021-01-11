@@ -23,7 +23,7 @@ params:
           val: 0
         fixed_sigma: True
     mlp:
-      units: [16,16]
+      units: [64,64]
       activation: relu
       initializer:
         name: variance_scaling_initializer
@@ -40,7 +40,7 @@ params:
     tau: 0.9
     learning_rate: 5e-4
     name: test_uav
-    score_to_win: 0.95
+    score_to_win: 100
     grad_norm: 10.5
     entropy_coef: 0.000
     truncate_grads: True
@@ -49,20 +49,21 @@ params:
     e_clip: 0.2
     clip_value: False
     num_actors: 16
-    steps_num: 128
-    minibatch_size: 1024
+    steps_num: 256
+    minibatch_size: 2048
     mini_epochs: 4
     critic_coef: 1
-    lr_schedule:  None
-    lr_threshold: 0.008
+    lr_schedule:  adaptive
+    lr_threshold: 0.002
     normalize_input: False
     weight_decay: 0.0000
     max_epochs: 10000
 
     env_config:
       name: TestUAV-v0
-
+      dist_coef: 0.001
+      vel_coef: 0.01
     player:
         games_num: 5
-        determenistic: False
+        determenistic: True
         render: True

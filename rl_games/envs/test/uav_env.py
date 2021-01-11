@@ -19,7 +19,7 @@ class UAV_nav(gym.Env):
   """
   metadata = {'render.modes': ['console']}
   
-  def __init__(self):
+  def __init__(self, **kwargs):
     super(UAV_nav, self).__init__()
 
     self.n_states = 2
@@ -27,7 +27,8 @@ class UAV_nav(gym.Env):
     self.agent_pos = np.zeros((self.n_states,), dtype=np.float32)
     self.curr_time = 0.0
     self._max_episode_steps = 5000
-
+    self.dist_coef = kwargs.pop('dist_coef', 1.0/ 200.0)
+    self.vel_coef = kwargs.pop('vel_coef', 2.0)
     # Define agent variables
 
     self.goal = 20.0
@@ -70,24 +71,26 @@ class UAV_nav(gym.Env):
     self.curr_time += DEL_T
 
     # Is the goal reached?
-    diff = x_new - self.goal
-    if (abs(diff) < 1.0):
+    diffx = x_new - self.goal
+    diffv = sol_int.y[1] - 0
+    if (abs(diffx) < 1.0):
       done = True
     else:
       done = False
 
     # Reward is sum of incremental decrease in position + Time penalty + Episode end bonus
-    reward_dist = -abs(diff) / 200
-    reward_time = -0.1
+    reward_dist = -np.abs(((diffx*self.dist_coef) + (diffv*self.vel_coef)))
+    reward_time = -0.0
     reward_done = 0
 
-    if done:
-      reward_done = 10 - np.abs(sol_int.y[1]) * 2
+
       
     goal_reached = False
-    if done and np.abs(sol_int.y[1]) < 0.001:
+    if done and np.abs(sol_int.y[1]) < 1:
       goal_reached = True
 
+    if goal_reached:
+      reward_done = 10 - 2*np.abs(sol_int.y[1])
 
     reward = reward_dist + reward_done + reward_time
 
