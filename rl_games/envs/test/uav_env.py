@@ -80,7 +80,7 @@ class UAV_nav(gym.Env):
 
     # Reward is sum of incremental decrease in position + Time penalty + Episode end bonus
     reward_dist = -np.abs(((diffx*self.dist_coef) + (diffv*self.vel_coef)))
-    reward_time = -0.0
+    reward_time = -0.01
     reward_done = 0
 
 
