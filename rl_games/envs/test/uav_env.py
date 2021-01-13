@@ -55,6 +55,13 @@ class UAV_nav(gym.Env):
     self.curr_time = 0.0
     return self.agent_pos
 
+
+  def vel_reward(self, vel):
+    if vel> 1:
+      return vel*vel
+    else:
+      return vel
+
   def step(self, action):
 
     DEL_T = 0.1
@@ -71,26 +78,28 @@ class UAV_nav(gym.Env):
     self.curr_time += DEL_T
 
     # Is the goal reached?
-    diffx = x_new - self.goal
+    #diffx = x_new - self.goal
+    diffx = np.sign(x_new - sol_int.y[0])
     diffv = sol_int.y[1] - 0
-    if (abs(diffx) < 1.0):
+    if (abs(x_new - self.goal) < 1.0):
       done = True
     else:
       done = False
 
     # Reward is sum of incremental decrease in position + Time penalty + Episode end bonus
     reward_dist = -np.abs(((diffx*self.dist_coef) + (diffv*self.vel_coef)))
-    reward_time = -0.01
+    reward_time = -0.1
     reward_done = 0
 
 
       
     goal_reached = False
-    if done and np.abs(sol_int.y[1]) < 1:
+    #''' and np.abs(sol_int.y[1]) < 2'''
+    if done and np.abs(diffv) < 1.0:
       goal_reached = True
 
-    if goal_reached:
-      reward_done = 10 - 2*np.abs(sol_int.y[1])
+    if done:
+      reward_done = 20 - 2*self.vel_reward(np.abs(diffv))
 
     reward = reward_dist + reward_done + reward_time
 

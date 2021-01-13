@@ -55,14 +55,14 @@ params:
     critic_coef: 1
     lr_schedule:  adaptive
     lr_threshold: 0.004
-    normalize_input: False
+    normalize_input: True
     weight_decay: 0.0000
     max_epochs: 10000
 
     env_config:
       name: TestUAV-v0
-      dist_coef: 0.001
-      vel_coef: 0.01
+      dist_coef: 0.0001
+      vel_coef: 0.00
     player:
         games_num: 5
         determenistic: True
