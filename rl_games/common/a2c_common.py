@@ -155,7 +155,8 @@ class A2CBase(BaseAlgorithm):
         self.network = config['network']
         self.rewards_shaper = config['reward_shaper']
         self.num_agents = self.env_info.get('agents', 1)
-        self.horizon_length = config['horizon_length']
+        # self.horizon_length = config['horizon_length']
+        self.horizon_length = config['steps_num']
         self.seq_len = self.config.get('seq_length', 4)
         self.bptt_len = self.config.get('bptt_length', self.seq_len)
         self.normalize_advantage = config['normalize_advantage']

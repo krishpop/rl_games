@@ -36,3 +36,6 @@ atari = ["ale-py", "AutoROM"]
 brax = ["brax", "jax"]
 mujoco = ["mujoco-py"]
 envpool = ["envpool"]
+
+[tools.black]
+exclude = ["."]
