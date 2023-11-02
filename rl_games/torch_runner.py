@@ -114,6 +114,7 @@ class Runner:
         _restore(agent, args)
         _override_sigma(agent, args)
         agent.train()
+        return agent
 
     def run_play(self, args):
         print('Started to play')
@@ -121,6 +122,7 @@ class Runner:
         _restore(player, args)
         _override_sigma(player, args)
         player.run()
+        return player
 
     def create_player(self):
         return self.player_factory.create(self.algo_name, params=self.params)
@@ -130,8 +132,8 @@ class Runner:
 
     def run(self, args):
         if args['train']:
-            self.run_train(args)
+            return self.run_train(args)
         elif args['play']:
-            self.run_play(args)
+            return self.run_play(args)
         else:
-            self.run_train(args)
+            return self.run_train(args)
